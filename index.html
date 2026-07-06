@@ -11,6 +11,7 @@
 <link rel="manifest" href="manifest.json">
 
 <!-- iOS install support -->
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Marginalia">
@@ -487,18 +488,19 @@ function saveCurrentEntry(){
     return;
   }
   const now = new Date().toISOString();
-  entries[selectedDate] = {
+  const savedEntry = {
     date: selectedDate,
     title: title || '(untitled)',
     body: body,
     mood: mood,
     updatedAt: now
   };
+  entries[selectedDate] = savedEntry;
   saveEntriesLocal();
   renderCalendar();
   closeEditor();
   showToast('Entry saved');
-  queueSync(entries[selectedDate], 'upsert');
+  queueSync(savedEntry, 'upsert');
 }
 
 function deleteCurrentEntry(){
