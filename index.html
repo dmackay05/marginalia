@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Marginalia — Daily Journal</title>
+<meta name="theme-color" content="#12100E">
+<meta name="description" content="A calendar-first daily journal with Google Sheets sync.">
+
+<!-- PWA manifest -->
+<link rel="manifest" href="manifest.json">
+
+<!-- iOS install support -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Marginalia">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+<!-- Icons -->
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#12100E;
+  --bg-raised:#1B1815;
+  --bg-card:#211D19;
+  --line:#332E28;
+  --ink:#EFE9DF;
+  --ink-dim:#A99F8F;
+  --ink-faint:#6E6559;
+  --accent:#C77B4A;
+  --accent-soft:rgba(199,123,74,0.16);
+  --sage:#7C9070;
+  --sage-soft:rgba(124,144,112,0.16);
+  --danger:#B5544A;
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+  --radius: 16px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:'DM Sans',system-ui,sans-serif;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior-y:none;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;}
+
+/* ---------- Header ---------- */
+header{
+  padding:28px 20px 14px;
+  display:flex;align-items:baseline;justify-content:space-between;
+}
+.brand{
+  font-family:'Cormorant Garamond',serif;
+  font-size:32px;font-weight:600;letter-spacing:0.3px;
+  display:flex;flex-direction:column;line-height:1.05;
+}
+.brand small{
+  font-family:'DM Mono',monospace;font-size:11px;font-weight:400;
+  color:var(--ink-faint);letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;
+}
+.sync-dot{
+  width:8px;height:8px;border-radius:50%;background:var(--ink-faint);
+  transition:background .3s;flex-shrink:0;
+}
+.sync-dot.ok{background:var(--sage);}
+.sync-dot.err{background:var(--danger);}
+.sync-dot.busy{background:var(--accent);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.sync-row{display:flex;align-items:center;gap:8px;font-family:'DM Mono',monospace;font-size:10px;color:var(--ink-faint);cursor:pointer;}
+
+/* ---------- Month nav ---------- */
+.month-nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:4px 20px 18px;
+}
+.month-nav .month-label{
+  font-family:'Cormorant Garamond',serif;font-size:22px;font-style:italic;font-weight:500;
+  min-width:170px;text-align:center;
+}
+.nav-btn{
+  width:38px;height:38px;border-radius:50%;border:1px solid var(--line);
+  background:var(--bg-raised);color:var(--ink);display:flex;align-items:center;justify-content:center;
+  font-size:16px;cursor:pointer;
+}
+.nav-btn:active{background:var(--bg-card);}
+.today-link{
+  font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;
+  color:var(--accent);text-align:center;margin:-8px 0 14px;cursor:pointer;
+}
+
+/* ---------- Calendar grid ---------- */
+.weekdays{display:grid;grid-template-columns:repeat(7,1fr);padding:0 14px;margin-bottom:6px;}
+.weekdays span{
+  text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--ink-faint);
+  letter-spacing:1px;
+}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:0 14px 10px;}
+.day{
+  aspect-ratio:1/1;border-radius:12px;background:var(--bg-raised);
+  border:1px solid transparent;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  position:relative;cursor:pointer;transition:transform .12s, background .15s;
+}
+.day:active{transform:scale(0.94);}
+.day.other-month{opacity:0.28;}
+.day .num{font-size:14px;font-weight:500;}
+.day.today{border-color:var(--accent);}
+.day.today .num{color:var(--accent);font-weight:700;}
+.day.has-entry{background:var(--accent-soft);}
+.day.has-entry .num{color:var(--ink);}
+.dot{
+  width:5px;height:5px;border-radius:50%;background:var(--accent);
+  position:absolute;bottom:8px;
+}
+.day.future{opacity:0.55;}
+
+/* ---------- Streak / stats strip ---------- */
+.stats{
+  display:flex;gap:10px;padding:6px 20px 20px;
+}
+.stat{
+  flex:1;background:var(--bg-card);border:1px solid var(--line);border-radius:12px;
+  padding:12px 10px;text-align:center;
+}
+.stat .n{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:var(--accent);line-height:1;}
+.stat .l{font-family:'DM Mono',monospace;font-size:9px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:1px;margin-top:4px;}
+
+/* ---------- Recent entries list ---------- */
+.section-label{
+  font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+  color:var(--ink-faint);padding:6px 20px;
+}
+.entry-list{padding:0 16px 100px;display:flex;flex-direction:column;gap:8px;}
+.entry-card{
+  background:var(--bg-card);border:1px solid var(--line);border-radius:14px;
+  padding:14px 16px;cursor:pointer;
+}
+.entry-card .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+.entry-card .date{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:0.5px;}
+.entry-card .title{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;margin-top:4px;}
+.entry-card .snippet{color:var(--ink-dim);font-size:13px;margin-top:5px;line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.empty-state{
+  text-align:center;padding:40px 24px;color:var(--ink-faint);font-size:13px;line-height:1.6;
+}
+.empty-state .glyph{font-family:'Cormorant Garamond',serif;font-size:38px;font-style:italic;color:var(--ink-faint);margin-bottom:10px;}
+
+/* ---------- FAB ---------- */
+.fab{
+  position:fixed;bottom:26px;left:50%;transform:translateX(-50%);
+  max-width:520px;width:calc(100% - 40px);
+  background:var(--accent);color:#12100E;border:none;border-radius:16px;
+  padding:15px;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  box-shadow:var(--shadow);cursor:pointer;z-index:20;
+}
+.fab:active{transform:translateX(-50%) scale(0.97);}
+
+/* ---------- Modal / Editor ---------- */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(2px);
+  z-index:50;display:none;align-items:flex-end;justify-content:center;
+}
+.overlay.open{display:flex;}
+.sheet{
+  width:100%;max-width:520px;background:var(--bg-raised);
+  border-radius:22px 22px 0 0;max-height:92vh;display:flex;flex-direction:column;
+  animation:slideup .25s ease-out;
+  border-top:1px solid var(--line);
+}
+@keyframes slideup{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.sheet-handle{width:40px;height:4px;background:var(--line);border-radius:2px;margin:10px auto 4px;}
+.sheet-header{
+  padding:10px 20px 6px;display:flex;align-items:center;justify-content:space-between;
+}
+.sheet-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:0.5px;}
+.close-btn{
+  background:none;border:none;color:var(--ink-faint);font-size:22px;cursor:pointer;padding:4px 8px;
+}
+.sheet-body{padding:6px 20px 20px;overflow-y:auto;flex:1;}
+.field-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:1px;margin:14px 0 6px;}
+input.title-input{
+  width:100%;background:transparent;border:none;border-bottom:1px solid var(--line);
+  color:var(--ink);font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:600;
+  padding:6px 0;outline:none;
+}
+input.title-input:focus{border-bottom-color:var(--accent);}
+textarea.body-input{
+  width:100%;min-height:220px;background:var(--bg-card);border:1px solid var(--line);border-radius:14px;
+  color:var(--ink);font-family:'DM Sans',sans-serif;font-size:15px;line-height:1.6;
+  padding:14px;outline:none;resize:vertical;margin-top:6px;
+}
+textarea.body-input:focus{border-color:var(--accent);}
+.mood-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+.mood-chip{
+  padding:8px 13px;border-radius:20px;background:var(--bg-card);border:1px solid var(--line);
+  font-size:13px;cursor:pointer;color:var(--ink-dim);
+}
+.mood-chip.active{background:var(--sage-soft);border-color:var(--sage);color:var(--ink);}
+.meta-line{font-family:'DM Mono',monospace;font-size:10px;color:var(--ink-faint);margin-top:14px;}
+.sheet-actions{
+  display:flex;gap:10px;padding:14px 20px calc(20px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line);
+}
+.btn{
+  flex:1;padding:14px;border-radius:12px;border:none;font-family:'DM Sans',sans-serif;
+  font-weight:700;font-size:14px;cursor:pointer;
+}
+.btn-save{background:var(--accent);color:#12100E;}
+.btn-delete{background:transparent;color:var(--danger);border:1px solid var(--danger);flex:0 0 46px;}
+.btn:active{opacity:.8;}
+.toast{
+  position:fixed;bottom:100px;left:50%;transform:translateX(-50%);
+  background:var(--bg-card);border:1px solid var(--line);color:var(--ink);
+  padding:10px 18px;border-radius:10px;font-size:13px;z-index:80;
+  opacity:0;pointer-events:none;transition:opacity .25s, transform .25s;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+
+/* settings sheet */
+.settings-link{font-family:'DM Mono',monospace;font-size:10px;color:var(--ink-faint);text-decoration:underline;cursor:pointer;}
+.settings-body input{
+  width:100%;background:var(--bg-card);border:1px solid var(--line);border-radius:10px;
+  color:var(--ink);font-family:'DM Mono',monospace;font-size:12px;padding:12px;outline:none;margin-top:6px;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="brand">Marginalia<small>daily journal</small></div>
+    <div class="sync-row" id="syncRow" title="Tap for sync settings">
+      <span class="sync-dot" id="syncDot"></span>
+      <span id="syncLabel">local</span>
+    </div>
+  </header>
+
+  <div class="month-nav">
+    <button class="nav-btn" id="prevMonth">‹</button>
+    <div class="month-label" id="monthLabel">Month Year</div>
+    <button class="nav-btn" id="nextMonth">›</button>
+  </div>
+  <div class="today-link" id="todayLink">jump to today</div>
+
+  <div class="weekdays">
+    <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+  </div>
+  <div class="grid" id="calGrid"></div>
+
+  <div class="stats">
+    <div class="stat"><div class="n" id="statStreak">0</div><div class="l">Streak</div></div>
+    <div class="stat"><div class="n" id="statMonth">0</div><div class="l">This Month</div></div>
+    <div class="stat"><div class="n" id="statTotal">0</div><div class="l">Total</div></div>
+  </div>
+
+  <div class="section-label">Recent Entries</div>
+  <div class="entry-list" id="entryList"></div>
+
+  <button class="fab" id="newEntryFab">✎ New Entry</button>
+</div>
+
+<!-- Entry editor sheet -->
+<div class="overlay" id="editorOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-date" id="sheetDate">JAN 1, 2026</div>
+      <button class="close-btn" id="closeEditor">✕</button>
+    </div>
+    <div class="sheet-body">
+      <input type="text" class="title-input" id="entryTitle" placeholder="A title for today…" maxlength="120">
+      <div class="field-label">Mood</div>
+      <div class="mood-row" id="moodRow"></div>
+      <div class="field-label">Entry</div>
+      <textarea class="body-input" id="entryBody" placeholder="Write whatever's on your mind…"></textarea>
+      <div class="meta-line" id="metaLine"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-delete" id="deleteEntry" style="display:none;">🗑</button>
+      <button class="btn btn-save" id="saveEntry">Save Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="overlay" id="settingsOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <div class="sheet-date">SYNC SETTINGS</div>
+      <button class="close-btn" id="closeSettings">✕</button>
+    </div>
+    <div class="sheet-body settings-body">
+      <div class="field-label">Apps Script Web App URL</div>
+      <input type="text" id="scriptUrl" placeholder="https://script.google.com/macros/s/…/exec">
+      <div class="field-label" style="margin-top:18px;">Status</div>
+      <div class="meta-line" id="settingsStatus">Not connected — entries save locally only.</div>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn btn-save" id="saveSettings">Save & Sync Now</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<iframe name="syncFrame" id="syncFrame" style="display:none;"></iframe>
+
+<script>
+/* ============================================================
+   Marginalia — Daily Journal
+   localStorage-first, Google Sheets sync via iframe-POST + JSONP GET
+   Storage key convention matches David's other PWAs (Cadence, Ledger, etc.)
+   ============================================================ */
+
+const LS_ENTRIES = 'marginalia_entries_v1';
+const LS_SCRIPT_URL = 'marginalia_script_url';
+const LS_LAST_SYNC = 'marginalia_last_sync';
+
+const MOODS = ['😌 Calm','🙂 Good','😐 Neutral','😔 Low','😤 Stressed','🙏 Grateful','⚡ Energized','😴 Tired'];
+
+let entries = {};          // { 'YYYY-MM-DD': {date,title,body,mood,updatedAt} }
+let viewYear, viewMonth;   // 0-indexed month for the calendar being displayed
+let selectedDate = null;   // date currently open in editor
+let scriptUrl = localStorage.getItem(LS_SCRIPT_URL) || '';
+
+/* ---------- date helpers ---------- */
+function todayStr(){ return fmtDate(new Date()); }
+function fmtDate(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function parseDate(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function monthLabelStr(y,m){
+  return new Date(y,m,1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+}
+
+/* ---------- storage ---------- */
+function loadEntries(){
+  try{ entries = JSON.parse(localStorage.getItem(LS_ENTRIES)) || {}; }
+  catch(e){ entries = {}; }
+}
+function saveEntriesLocal(){
+  localStorage.setItem(LS_ENTRIES, JSON.stringify(entries));
+}
+
+/* ---------- rendering: calendar ---------- */
+function renderCalendar(){
+  document.getElementById('monthLabel').textContent = monthLabelStr(viewYear, viewMonth);
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  const firstOfMonth = new Date(viewYear, viewMonth, 1);
+  const startDow = firstOfMonth.getDay();
+  const daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
+  const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
+  const today = todayStr();
+  const cells = [];
+
+  for(let i=startDow-1;i>=0;i--){
+    cells.push({day: daysInPrevMonth-i, other:true, dateObj:new Date(viewYear, viewMonth-1, daysInPrevMonth-i)});
+  }
+  for(let d=1; d<=daysInMonth; d++){
+    cells.push({day:d, other:false, dateObj:new Date(viewYear, viewMonth, d)});
+  }
+  let next=1;
+  while(cells.length % 7 !== 0){
+    cells.push({day:next, other:true, dateObj:new Date(viewYear, viewMonth+1, next)}); next++;
+  }
+
+  cells.forEach(c=>{
+    const ds = fmtDate(c.dateObj);
+    const div = document.createElement('div');
+    div.className = 'day' + (c.other?' other-month':'') + (ds===today?' today':'') + (entries[ds]?' has-entry':'') + (ds>today?' future':'');
+    div.innerHTML = `<span class="num">${c.day}</span>` + (entries[ds] ? '<span class="dot"></span>' : '');
+    div.addEventListener('click', ()=>openEditor(ds));
+    grid.appendChild(div);
+  });
+
+  renderStats();
+  renderRecent();
+}
+
+function renderStats(){
+  const dates = Object.keys(entries).sort();
+  document.getElementById('statTotal').textContent = dates.length;
+
+  const monthCount = dates.filter(d=>{
+    const dt = parseDate(d);
+    return dt.getFullYear()===viewYear && dt.getMonth()===viewMonth;
+  }).length;
+  document.getElementById('statMonth').textContent = monthCount;
+
+  // streak: consecutive days ending today or yesterday
+  let streak = 0;
+  let cursor = new Date();
+  if(!entries[fmtDate(cursor)]){
+    cursor.setDate(cursor.getDate()-1);
+  }
+  while(entries[fmtDate(cursor)]){
+    streak++;
+    cursor.setDate(cursor.getDate()-1);
+  }
+  document.getElementById('statStreak').textContent = streak;
+}
+
+function renderRecent(){
+  const list = document.getElementById('entryList');
+  const dates = Object.keys(entries).sort().reverse().slice(0,10);
+  if(dates.length===0){
+    list.innerHTML = `<div class="empty-state"><div class="glyph">✎</div>No entries yet.<br>Tap a day on the calendar or "New Entry" to begin.</div>`;
+    return;
+  }
+  list.innerHTML = '';
+  dates.forEach(ds=>{
+    const e = entries[ds];
+    const dt = parseDate(ds);
+    const card = document.createElement('div');
+    card.className = 'entry-card';
+    card.innerHTML = `
+      <div class="row">
+        <span class="date">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}).toUpperCase()}</span>
+        <span>${e.mood||''}</span>
+      </div>
+      <div class="title">${escapeHtml(e.title || 'Untitled')}</div>
+      <div class="snippet">${escapeHtml(e.body||'')}</div>
+    `;
+    card.addEventListener('click', ()=>openEditor(ds));
+    list.appendChild(card);
+  });
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
+
+/* ---------- editor ---------- */
+function openEditor(ds){
+  selectedDate = ds;
+  const e = entries[ds] || {};
+  document.getElementById('sheetDate').textContent = parseDate(ds).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+  document.getElementById('entryTitle').value = e.title || '';
+  document.getElementById('entryBody').value = e.body || '';
+  document.getElementById('deleteEntry').style.display = entries[ds] ? 'block' : 'none';
+  document.getElementById('metaLine').textContent = e.updatedAt ? ('last edited ' + new Date(e.updatedAt).toLocaleString()) : '';
+
+  const moodRow = document.getElementById('moodRow');
+  moodRow.innerHTML = '';
+  MOODS.forEach(m=>{
+    const chip = document.createElement('div');
+    chip.className = 'mood-chip' + (e.mood===m ? ' active':'');
+    chip.textContent = m;
+    chip.dataset.mood = m;
+    chip.addEventListener('click', ()=>{
+      const active = moodRow.querySelector('.active');
+      if(active) active.classList.remove('active');
+      if(active && active.dataset.mood === m){ /* toggled off */ }
+      else chip.classList.add('active');
+    });
+    moodRow.appendChild(chip);
+  });
+
+  document.getElementById('editorOverlay').classList.add('open');
+  setTimeout(()=>document.getElementById('entryTitle').focus(), 150);
+}
+function closeEditor(){
+  document.getElementById('editorOverlay').classList.remove('open');
+  selectedDate = null;
+}
+
+function saveCurrentEntry(){
+  if(!selectedDate) return;
+  const title = document.getElementById('entryTitle').value.trim();
+  const body = document.getElementById('entryBody').value.trim();
+  const moodChip = document.querySelector('#moodRow .active');
+  const mood = moodChip ? moodChip.dataset.mood : '';
+
+  if(!title && !body){
+    showToast('Nothing to save');
+    return;
+  }
+  const now = new Date().toISOString();
+  entries[selectedDate] = {
+    date: selectedDate,
+    title: title || '(untitled)',
+    body: body,
+    mood: mood,
+    updatedAt: now
+  };
+  saveEntriesLocal();
+  renderCalendar();
+  closeEditor();
+  showToast('Entry saved');
+  queueSync(entries[selectedDate], 'upsert');
+}
+
+function deleteCurrentEntry(){
+  if(!selectedDate || !entries[selectedDate]) return;
+  if(!confirm('Delete this journal entry? This cannot be undone.')) return;
+  const removed = entries[selectedDate];
+  delete entries[selectedDate];
+  saveEntriesLocal();
+  renderCalendar();
+  closeEditor();
+  showToast('Entry deleted');
+  queueSync({date: removed.date}, 'delete');
+}
+
+/* ---------- toast ---------- */
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ============================================================
+   GOOGLE SHEETS SYNC
+   Pattern: iframe-POST for writes (no CORS issues, fire-and-forget),
+   JSONP GET for reads (initial pull / manual refresh).
+   Web App (Apps Script) contract:
+     GET  ?action=list                -> JSONP callback with all rows
+     POST action=upsert / delete, date, title, body, mood, updatedAt
+   ============================================================ */
+function setSyncStatus(state, label){
+  const dot = document.getElementById('syncDot');
+  dot.className = 'sync-dot' + (state?(' '+state):'');
+  document.getElementById('syncLabel').textContent = label;
+}
+
+function queueSync(entry, action){
+  if(!scriptUrl){ setSyncStatus('', 'local only'); return; }
+  setSyncStatus('busy', 'syncing…');
+  try{
+    const frame = document.getElementById('syncFrame');
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = scriptUrl;
+    form.target = 'syncFrame';
+    form.style.display = 'none';
+
+    const fields = {
+      action: action,
+      date: entry.date,
+      title: entry.title || '',
+      body: entry.body || '',
+      mood: entry.mood || '',
+      updatedAt: entry.updatedAt || new Date().toISOString()
+    };
+    Object.keys(fields).forEach(k=>{
+      const inp = document.createElement('input');
+      inp.type='hidden'; inp.name=k; inp.value=fields[k];
+      form.appendChild(inp);
+    });
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(()=>{ document.body.removeChild(form); }, 1000);
+
+    setTimeout(()=>{
+      setSyncStatus('ok', 'synced');
+      localStorage.setItem(LS_LAST_SYNC, new Date().toISOString());
+    }, 900);
+  }catch(err){
+    console.error(err);
+    setSyncStatus('err', 'sync failed');
+  }
+}
+
+function pullFromSheet(){
+  if(!scriptUrl){ return; }
+  setSyncStatus('busy', 'loading…');
+  const cbName = 'marginalia_cb_' + Date.now();
+  window[cbName] = function(data){
+    try{
+      if(Array.isArray(data)){
+        data.forEach(row=>{
+          if(!row.date) return;
+          const existing = entries[row.date];
+          if(!existing || new Date(row.updatedAt||0) >= new Date(existing.updatedAt||0)){
+            entries[row.date] = {
+              date: row.date, title: row.title||'', body: row.body||'',
+              mood: row.mood||'', updatedAt: row.updatedAt || new Date().toISOString()
+            };
+          }
+        });
+        saveEntriesLocal();
+        renderCalendar();
+      }
+      setSyncStatus('ok', 'synced');
+    }catch(e){ console.error(e); setSyncStatus('err','sync error'); }
+    delete window[cbName];
+    script.remove();
+  };
+  const script = document.createElement('script');
+  script.src = scriptUrl + (scriptUrl.includes('?')?'&':'?') + 'action=list&callback=' + cbName;
+  script.onerror = ()=>{ setSyncStatus('err','sync failed'); delete window[cbName]; };
+  document.body.appendChild(script);
+}
+
+/* ---------- settings sheet ---------- */
+function openSettings(){
+  document.getElementById('scriptUrl').value = scriptUrl;
+  document.getElementById('settingsStatus').textContent = scriptUrl
+    ? ('Connected. Last sync: ' + (localStorage.getItem(LS_LAST_SYNC) ? new Date(localStorage.getItem(LS_LAST_SYNC)).toLocaleString() : 'never'))
+    : 'Not connected — entries save locally only.';
+  document.getElementById('settingsOverlay').classList.add('open');
+}
+function closeSettings(){ document.getElementById('settingsOverlay').classList.remove('open'); }
+
+document.getElementById('syncRow').addEventListener('click', openSettings);
+document.getElementById('closeSettings').addEventListener('click', closeSettings);
+document.getElementById('saveSettings').addEventListener('click', ()=>{
+  scriptUrl = document.getElementById('scriptUrl').value.trim();
+  localStorage.setItem(LS_SCRIPT_URL, scriptUrl);
+  closeSettings();
+  if(scriptUrl){ pullFromSheet(); } else { setSyncStatus('', 'local only'); }
+});
+
+/* ---------- nav wiring ---------- */
+document.getElementById('prevMonth').addEventListener('click', ()=>{
+  viewMonth--; if(viewMonth<0){viewMonth=11; viewYear--;} renderCalendar();
+});
+document.getElementById('nextMonth').addEventListener('click', ()=>{
+  viewMonth++; if(viewMonth>11){viewMonth=0; viewYear++;} renderCalendar();
+});
+document.getElementById('todayLink').addEventListener('click', ()=>{
+  const t = new Date(); viewYear=t.getFullYear(); viewMonth=t.getMonth(); renderCalendar();
+});
+document.getElementById('newEntryFab').addEventListener('click', ()=>openEditor(todayStr()));
+document.getElementById('closeEditor').addEventListener('click', closeEditor);
+document.getElementById('saveEntry').addEventListener('click', saveCurrentEntry);
+document.getElementById('deleteEntry').addEventListener('click', deleteCurrentEntry);
+document.getElementById('editorOverlay').addEventListener('click', (e)=>{ if(e.target.id==='editorOverlay') closeEditor(); });
+document.getElementById('settingsOverlay').addEventListener('click', (e)=>{ if(e.target.id==='settingsOverlay') closeSettings(); });
+
+/* ---------- init ---------- */
+function init(){
+  loadEntries();
+  const t = new Date();
+  viewYear = t.getFullYear(); viewMonth = t.getMonth();
+  renderCalendar();
+  if(scriptUrl){ setSyncStatus('', 'connected'); pullFromSheet(); }
+  else{ setSyncStatus('', 'local only'); }
+}
+init();
+
+/* ---------- PWA install (service worker for offline + installability) ---------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./service-worker.js').catch(err=>console.warn('SW registration failed', err));
+  });
+}
+</script>
+</body>
+</html>
